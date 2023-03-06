@@ -1,0 +1,1 @@
+Forcasting next-day security prices using adapted LSTM.
