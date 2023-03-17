@@ -9,6 +9,8 @@ Last Revised: 15 Mar 2023
 """
 
 import warnings
+import sys
+import os
 
 import optuna
 import base.py 
@@ -28,14 +30,7 @@ CLASSES = 10
 EPOCHS = 1 #10
 
 
-def objective(trial):
-    # Clear clutter from previous Keras session graphs.
-    clear_session()
-
-    # Put stock import functions here along with data cleaning.
-
-
-
+def create_model(trial):
     model = Sequential()
 
     units=trial.suggest_int('unit', 64, 128, step=2)
@@ -92,6 +87,14 @@ def objective(trial):
         metrics=["accuracy"]
     )
 
+    if trial.should_prune():
+            raise optuna.TrialPruned()
+    
+    return model
+
+
+def objective(trial):
+    model = create_model(trial)
     model.fit(
         X_train,
         y_train,
@@ -104,20 +107,23 @@ def objective(trial):
 
     # Evaluate the model accuracy on the validation set.
     score = model.evaluate(X_train, y_train, verbose=True)
-
+    
     return score[1]
 
 
 if __name__ == "__main__":
+    study_name = str(sys.argv[1])
+    n_trials = int(sys.argv[1])
+
     warnings.warn(
         "Layer LSTM will only use cuDNN high-efficiency kernals "
         "when training with layer params 'activation==tanh' "
         "'recurrent_activation==sigmoid', 'unroll=False', "
         "'use_bias=True', and 'recurrent_dropout=0.0'."
     )
-    study = optuna.create_study(direction="maximize", study_name='StockOpt')
+    study = optuna.create_study(direction="maximize", study_name=study_name)
     # Use n_jobs=-1 for full parallelization.
-    study.optimize(objective, n_trials=10, n_jobs=-1, timeout=600)
+    study.optimize(objective, n_trials=n_trials, n_jobs=1, timeout=600)
 
     print("Number of finished trials: {}".format(len(study.trials)))
 
