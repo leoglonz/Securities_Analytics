@@ -8,12 +8,10 @@ IN PROGRESS
 Last Revised: 15 Mar 2023
 """
 
-import warnings
 import sys
 import os
 
 import optuna
-import base.py 
 
 from keras.backend import clear_session
 from sklearn.preprocessing import MinMaxScaler
@@ -24,13 +22,30 @@ from keras.models import Sequential
 from keras.layers import Dense, LSTM
 from tensorflow.keras.optimizers import Adam
 
+from base import *
+import datetime as dt
 
-BATCHSIZE = 1 #128
-CLASSES = 10
+
+TICKER = 'AMZN'
+START = dt.datetime(2012, 1, 1)
+END = dt.datetime.today()
+
+LAG = 60
+DAYS = 1
+TRAIN_RATIO = 0.70
+
+BATCHSIZE = 128 #128
+CLASSES = 25
 EPOCHS = 1 #10
 
+STUDY = 'OptDebug'
+N_TRIALS = 2
 
-def create_model(trial):
+
+def create_model(trial, split):
+    X_train, y_train = split[0], split[1]
+    X_test, y_test = split[2], split[3]
+
     model = Sequential()
 
     units=trial.suggest_int('unit', 64, 128, step=2)
@@ -41,7 +56,7 @@ def create_model(trial):
             recurrent_activation='sigmoid',
             unroll=False,
             use_bias=True,
-            dropout=trial.suggest_float('droupout', 0, 1),
+            dropout=trial.suggest_float('dropout', 0, 1),
             # recurrent_dropout=trial.suggest_float('recurrent_droupout', 0, 1),
             return_sequences=True,
             input_shape=(X_train.shape[1], 1)
@@ -62,20 +77,21 @@ def create_model(trial):
     model.add(
         Dense(
             CLASSES,
-            activation='relu',
-            use_bias=True
+            activation=None,
+            # use_bias=True
         )
     )
     model.add(
         Dense(
             1,
-            activation='relu',
-            use_bias=True
+            # activation='relu',
+            # use_bias=True
         )
     )
 
     # We compile our model with a sampled learning rate.
     learning_rate = trial.suggest_float("learning_rate", 1e-5, 1e-1, log=True)
+    # Only use 'accuracy' metric for classification.
     model.compile(
         loss="mean_squared_error",
         optimizer=Adam(
@@ -84,7 +100,7 @@ def create_model(trial):
             beta_2=0.999,
             epsilon=1e-07
         ),
-        metrics=["accuracy"]
+        metrics=['mean_absolute_percentage_error']
     )
 
     if trial.should_prune():
@@ -94,7 +110,14 @@ def create_model(trial):
 
 
 def objective(trial):
-    model = create_model(trial)
+    # Importing and prepping data:
+    data = datImport(TICKER, start = START, end=END, verbose=False)
+    split = data_split(data, LAG, DAYS, TRAIN_RATIO)
+    X_train, y_train = split[0], split[1]
+    X_test, y_test = split[2], split[3]
+    scaler = split[4]
+
+    model = create_model(trial, split)
     model.fit(
         X_train,
         y_train,
@@ -107,21 +130,29 @@ def objective(trial):
 
     # Evaluate the model accuracy on the validation set.
     score = model.evaluate(X_train, y_train, verbose=True)
+    predictions = model.predict(X_test)
+    predictions = scaler.inverse_transform(predictions)
+
+    # RMSE.
+    rmse = np.sqrt(np.mean(predictions - y_test)**2)
     
-    return score[1]
+    return rmse #score[1]
 
 
 if __name__ == "__main__":
-    study_name = str(sys.argv[1])
-    n_trials = int(sys.argv[1])
+    study_name = STUDY #str(sys.argv[1])
+    n_trials = N_TRIALS # int(sys.argv[1])
 
+    # Suppress TensorFlow debug output.
+    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
     warnings.warn(
         "Layer LSTM will only use cuDNN high-efficiency kernals "
         "when training with layer params 'activation==tanh' "
         "'recurrent_activation==sigmoid', 'unroll=False', "
         "'use_bias=True', and 'recurrent_dropout=0.0'."
     )
-    study = optuna.create_study(direction="maximize", study_name=study_name)
+
+    study = optuna.create_study(direction="minimize", study_name=study_name)
     # Use n_jobs=-1 for full parallelization.
     study.optimize(objective, n_trials=n_trials, n_jobs=1, timeout=600)
 

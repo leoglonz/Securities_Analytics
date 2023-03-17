@@ -7,32 +7,17 @@
 
 #!/bin/bash
 
-cd ~/stock_analysis/
+cd ~/Desktop/stock_analysis/
 pwd
 date
 
-python lstm_optimization & #1 
-python particletracking.py h329 33 & #2
-python particletracking.py h229 27 & #3
-python particletracking.py h148 13 & #4
+python lstm_optimization "OptTrial1" 20 & #1 
+python lstm_optimization "OptTrial2" 20 & #2
+python lstm_optimization "OptTrial3" 20 & #3
+python lstm_optimization "OptTrial4" 20 & #4
 wait
-python particletracking.py h229 20 & #5
-python particletracking.py h242 24 & #6
-python particletracking.py h229 22 & #7
-wait
-python particletracking.py h242 80 & #8
-python particletracking.py h148 37 & #9
-python particletracking.py h148 28 & #10 
-python particletracking.py h148 68 & #11
-wait
-python particletracking.py h148 278 & #12
-python particletracking.py h229 23 & #13
-python particletracking.py h148 45 & #14
-wait
-python particletracking.py h148 283 & #15
-python particletracking.py h229 55 & #16
-python particletracking.py h329 137 & #17
-wait
-python particletracking.py h148 80 & #18
-python particletracking.py h148 329 & #19
+python lstm_optimization "OptTrial4" 20 & #5
+python lstm_optimization "OptTrial4" 20 & #6
+python lstm_optimization "OptTrial4" 20 & #7
+python lstm_optimization "OptTrial4" 20 & #8
 wait

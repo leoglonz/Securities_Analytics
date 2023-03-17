@@ -2,25 +2,46 @@
 Contains the base-level analytical functions and other data prep algorithms used frequently throughout this project.
 
 IN PROGRESS
-Last Revised: 15 Mar 2023
+Last Revised: 16 Mar 2023
 """
 
-import math
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 
 from sklearn.preprocessing import MinMaxScaler
-from sklearn.linear_model import LinearRegression
-from keras.models import Sequential
-from keras.layers import Dense, LSTM
 
 from pandas_datareader import data as pdr
+import yfinance as yfin
 import datetime as dt
+import warnings
 
-def datImport(ticker, start, end=dt.datetime.today(), verbose=False):
-    # importing daily equity or market data.
+yfin.pdr_override()
+pd.options.mode.chained_assignment = None  # default='warn'
+
+
+def custom_formatwarning(msg, *args, **kwargs):
+    # ignore everything except the message
+    return str("UserWarning: ") + str(msg) + '\n'
+
+warnings.formatwarning = custom_formatwarning
+
+
+def datImport(ticker, start=dt.datetime(2023,1,1), end=dt.datetime.today(), 
+              verbose=False):
+    """
+    For importing window of equity or market data identified by 'ticker' 
+    from Yahoo Finance. 
+    Verbose will enable a basic plot readout for the imported security.
+    Arguments:
+    ticker: string, the ticker identifier for the security/market.
+    start: dt.datetime, date of first observation for ticker.
+    end: dt.datetime, date of last observation for ticker.
+    verbose: bool, True enables basic plot of Adj. closing prices for ticker.
+    Returns:
+    Pandas DataFrame of all data for ticker from Yahoo in the designated window.
+    """
     data = pdr.get_data_yahoo(ticker, start, end).rename(columns= {'Adj Close': 'AdjClose'})
 
     if verbose:
@@ -31,10 +52,10 @@ def datImport(ticker, start, end=dt.datetime.today(), verbose=False):
 
         ax.plot(data.index, data.AdjClose)
 
-        ax.set_title('Adjusted Closing Prices for %s (USD), %s-%s' 
+        ax.set_title("Adjusted Closing Prices for %s (USD), %s-%s" 
                     %(ticker, start.year, end.year))
         ax.set_xlabel('Date', fontsize=18)
-        ax.set_ylabel('Adjusted Closing Price (USD)', fontsize=18)
+        ax.set_ylabel("Adjusted Closing Price (USD)", fontsize=18)
 
         # Set major and minor date tick locators
         maj_loc = mdates.MonthLocator(bymonth=np.arange(1,12,6))
@@ -90,40 +111,59 @@ def series_to_supervised(data, n_in=5, n_out=1, dropnan=True):
     return agg
 
 
-def beta(df, market=None):
-    # Calculating betas using prices from every business day)
-    # If the market values are not passed,
-    # I'll assume they are located in a column
-    # named 'Market'.  If not, this will fail.
-    if market is None:
-        market = df['MarketClose']
-        df = df.drop('MarketClose', axis=1)
-    X = market.values.reshape(-1, 1)
-    X = np.concatenate([np.ones_like(X), X], axis=1)
-    b = np.linalg.pinv(X.T.dot(X)).dot(X.T).dot(df.values)
+def data_split(data, lag=60, days=1, train_ratio=0.70):
+    """
+    Prepping stock data for neural net; scaling down 
+    values and making train-test split.
+    data: DataFrame, all stock data.
+    lag: int, number of days used for prediction.
+    days: int, number of days to predict.
+    train_ratio: float, percentage of data for training.
+    Returns
+        X_train: array, independent training features.
+        y_train: array, objective training feature.
+        X_test: array, independent test features.
+        y_test: array, objective test feature.
+    """
+    # Selecting 'AdjClose' prices as input and target feature for time series.
+    data_adj = data.filter(['AdjClose']).values
+
+    # Scaling data. Ensures quicker convergence to solution.
+    scaler = MinMaxScaler(feature_range=(0,1))
+    scaled_data = scaler.fit_transform(data_adj)
+
+    # Splitting input features and target object, X and y.
+    supervised_data = series_to_supervised(scaled_data, n_in=lag, n_out=days)
+    y = supervised_data['var1(t)'] # Isolating target object.
+    X = supervised_data.loc[:, supervised_data.columns != 'var1(t)'] 
+
+    # Selecting converted data for train-test split.
+    len_training = int(np.ceil(len(scaled_data) * train_ratio))
+
+    X_train = X.iloc[0:len_training].to_numpy()
+    y_train = y.iloc[0:len_training].to_numpy()
+    # X_train, y_train = np.array(X_train), np.array(y_train)
+
+    # We subtract lag since we need the lag days to actually make test predictions.
+    X_test = X.iloc[len_training-60:].to_numpy()
+    y_test = data_adj[len_training:]
+
+    # Reshaping to obtain 3D reps (currently 2d) to pass into LSTM.
+    # LSTM expects d1 # of samples, d2 # of timesteps, and d3 # of features.
+    X_train = np.reshape(X_train, (X_train.shape[0], X_train.shape[1], 1))
+    X_test = np.reshape(X_test, (X_test.shape[0], X_test.shape[1], 1))
+
+    if len(X_test) != len(y_test):
+        raise Warning('X_test, y_test length mismatch.')
     
-    return float(b[1])
+    return X_train, y_train, X_test, y_test, scaler
 
 
 def roll(df, window=252):
-    # Takes 'w'-sized slices from dataframe, incrementing 1 entry at a time.
-    for i in range(df.shape[0] - w + 1):
+    """
+    Takes 'w'-sized slices from dataframe, incrementing 1 entry at a time.
+    """
+    for i in range(df.shape[0] - window + 1):
         yield pd.DataFrame(df.values[i:i+window, :], df.index[i:i+window],
                            df.columns)
         
-
-def addBeta(stock, market, window=252, verbose=False):
-    # Calc beta across given df of closing prices.
-    # Window default is stet to calculate yearly beta.
-    betas = np.array([])
-    data = pd.concat([stock.AdjClose, market.MarketClose], axis=1)
-
-    for  i, sdf in enumerate(roll(data.pct_change().dropna(), window )):
-        betas = np.append(betas, beta(sdf))
-
-    full_data = data.drop(index=data.index[:window], axis=0, inplace=False)
-    full_data['Beta'] = betas.tolist()
-
-    return full_data
-
-
