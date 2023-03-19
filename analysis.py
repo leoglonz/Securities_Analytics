@@ -8,7 +8,6 @@ Last Revised: 15 Mar 2023
 import numpy as np
 
 from sklearn.metrics import accuracy_score
-from sklearn.model_selection import cross_val_score
 
 
 from base import *
@@ -47,17 +46,15 @@ def addBeta(stock, market, window=252, verbose=False):
 
     return full_data
 
+
 def get_score():
     """
     Return the average MAE over 3 CV folds of random forest model.
 
     n_estimators: the number of trees in the forest
     """
-    scores = -1 * cross_val_score(my_pipeline, X, y,
-                              cv=3,
-                              scoring='neg_mean_absolute_error')
     
-    return scores.mean()
+    return
 
 
 def model_performance(model, X, y):

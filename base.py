@@ -84,7 +84,7 @@ def series_to_supervised(data, n_in=5, n_out=1, dropnan=True):
     n_out: Number of observations as output (y).
     dropnan: Boolean whether or not to drop rows with NaN values.
     Returns:
-    Pandas DataFrame of series framed for supervised learning.
+        agg: DataFrame, series framed for supervised learning.
     """
     n_vars = 1 if type(data) is list else data.shape[1]
     df = pd.DataFrame(data)
@@ -111,7 +111,7 @@ def series_to_supervised(data, n_in=5, n_out=1, dropnan=True):
     return agg
 
 
-def data_split(data, lag=60, days=1, train_ratio=0.70):
+def data_split(data, lag=60, days=1, train_ratio=0.70, validation=False):
     """
     Prepping stock data for neural net; scaling down 
     values and making train-test split.
@@ -119,11 +119,14 @@ def data_split(data, lag=60, days=1, train_ratio=0.70):
     lag: int, number of days used for prediction.
     days: int, number of days to predict.
     train_ratio: float, percentage of data for training.
+    validation: bool, split data into train/valid/test when True.
     Returns
         X_train: array, independent training features.
         y_train: array, objective training feature.
         X_test: array, independent test features.
         y_test: array, objective test feature.
+        X_valid: array, independent validation features.
+        y_valid: array, objective validation feature.
     """
     # Selecting 'AdjClose' prices as input and target feature for time series.
     data_adj = data.filter(['AdjClose']).values
@@ -144,19 +147,40 @@ def data_split(data, lag=60, days=1, train_ratio=0.70):
     y_train = y.iloc[0:len_training].to_numpy()
     # X_train, y_train = np.array(X_train), np.array(y_train)
 
-    # We subtract lag since we need the lag days to actually make test predictions.
-    X_test = X.iloc[len_training-60:].to_numpy()
-    y_test = data_adj[len_training:]
+    # Making validation/test split.
+    if validation:
+        len_valid = int((len(X) - len_training)/2)
+        len_valid += len_training-60
+
+        # We subtract lag days since they are needed to actually  
+        X_valid = X.iloc[len_training-60:len_valid].to_numpy()
+        y_valid = data_adj[len_training:len_valid]
+
+        X_test = X.iloc[len_valid-60:].to_numpy()
+        y_test = data_adj[len_valid:]
+
+    else:
+        X_test = X.iloc[len_training-60:].to_numpy()
+        y_test = data_adj[len_training:]
 
     # Reshaping to obtain 3D reps (currently 2d) to pass into LSTM.
     # LSTM expects d1 # of samples, d2 # of timesteps, and d3 # of features.
-    X_train = np.reshape(X_train, (X_train.shape[0], X_train.shape[1], 1))
-    X_test = np.reshape(X_test, (X_test.shape[0], X_test.shape[1], 1))
+    X_train = np.reshape(X_train, (X_train.shape[0],
+                                   X_train.shape[1], 1))
+    X_test = np.reshape(X_test, (X_test.shape[0],
+                                 X_test.shape[1], 1))
 
     if len(X_test) != len(y_test):
-        raise Warning('X_test, y_test length mismatch.')
+        raise Warning('X, y length mismatch.')
     
-    return X_train, y_train, X_test, y_test, scaler
+    if validation:
+        X_valid = np.reshape(X_valid, (X_valid.shape[0],
+                                       X_valid.shape[1], 1))
+
+        return X_train, y_train, X_valid, y_valid, X_test, y_test, scaler
+    
+    else:
+        return X_train, y_train, X_test, y_test, scaler
 
 
 def roll(df, window=252):
