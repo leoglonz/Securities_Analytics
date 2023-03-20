@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 
 from sklearn.preprocessing import MinMaxScaler
+from scikeras.wrappers import BaseWrapper, KerasRegressor
 
 from pandas_datareader import data as pdr
 import yfinance as yfin
@@ -111,7 +112,8 @@ def series_to_supervised(data, n_in=5, n_out=1, dropnan=True):
     return agg
 
 
-def data_split(data, lag=60, days=1, train_ratio=0.70, validation=False):
+def data_split(data, lag=60, days=1, train_ratio=0.70,
+               validation=False, backtest=False):
     """
     Prepping stock data for neural net; scaling down 
     values and making train-test split.
@@ -120,6 +122,7 @@ def data_split(data, lag=60, days=1, train_ratio=0.70, validation=False):
     days: int, number of days to predict.
     train_ratio: float, percentage of data for training.
     validation: bool, split data into train/valid/test when True.
+    backtest: bool, only performs x-y split when True.
     Returns
         X_train: array, independent training features.
         y_train: array, objective training feature.
@@ -127,6 +130,8 @@ def data_split(data, lag=60, days=1, train_ratio=0.70, validation=False):
         y_test: array, objective test feature.
         X_valid: array, independent validation features.
         y_valid: array, objective validation feature.
+        X: array, independent features.
+        y: array, target feature.
     """
     # Selecting 'AdjClose' prices as input and target feature for time series.
     data_adj = data.filter(['AdjClose']).values
@@ -137,8 +142,8 @@ def data_split(data, lag=60, days=1, train_ratio=0.70, validation=False):
 
     # Splitting input features and target object, X and y.
     supervised_data = series_to_supervised(scaled_data, n_in=lag, n_out=days)
-    y = supervised_data['var1(t)'] # Isolating target object.
     X = supervised_data.loc[:, supervised_data.columns != 'var1(t)'] 
+    y = supervised_data['var1(t)'] # Isolating target object.
 
     # Selecting converted data for train-test split.
     len_training = int(np.ceil(len(scaled_data) * train_ratio))
@@ -176,11 +181,51 @@ def data_split(data, lag=60, days=1, train_ratio=0.70, validation=False):
     if validation:
         X_valid = np.reshape(X_valid, (X_valid.shape[0],
                                        X_valid.shape[1], 1))
-
         return X_train, y_train, X_valid, y_valid, X_test, y_test, scaler
     
-    else:
+    elif backtest:
+        return X, y, scaler
+
+    elif not backtest and not validation:
         return X_train, y_train, X_test, y_test, scaler
+    
+    else:
+        ValueError(
+            "Cannot simultaneously perform 'backtest' and 'validation'."
+            )
+        exit()
+
+
+def plot_cv_indices(cv, X, y, ax, n_splits, linewidth=10):
+    """
+    Plotting folds for walk forward-validation.
+    """
+    # Generate the training/testing visualizations for each CV split.
+    for i, (train, test) in enumerate(cv.split(X=X, y=y, groups=None)):
+        # Fill in indices with the training/test groups.
+        indices = np.array([np.nan]*len(X))
+        indices[train] = 1
+        indices[test] = 0
+
+        ax.scatter(
+            range(len(indices)),
+            [i+1] * len(indices),
+            c=indices, marker='_',
+            cmap='coolwarm',
+            linewidth=linewidth,
+            vmin=-.2, vmax=1.2
+            )
+
+    # Formatting
+    ax.set(
+        yticks=np.arange(1,n_splits+1),
+        xlabel="Historical Days Included",
+        ylabel="CV Pass",
+        ylim=[n_splits+1.2, -.1]
+        )
+    ax.set_title("Walk-forward Splits for %i Passes" %n_splits, fontsize=15)
+
+    return ax
 
 
 def roll(df, window=252):
@@ -190,4 +235,28 @@ def roll(df, window=252):
     for i in range(df.shape[0] - window + 1):
         yield pd.DataFrame(df.values[i:i+window, :], df.index[i:i+window],
                            df.columns)
-        
+
+
+###########################
+#### Class Definitions ####
+###########################
+
+class SlidingSeriesSplit():
+    def __init__(self, n_splits):
+        self.n_splits = n_splits
+    
+    def get_n_splits(self, X, y, groups):
+        return self.n_splits
+    
+    def split(self, X, y=None, groups=None):
+        n_samples = len(X)
+        k_fold_size = n_samples // self.n_splits
+        indices = np.arange(n_samples)
+
+        margin = 0
+        for i in range(self.n_splits):
+            # Sets the overlap of each block.
+            start = i * int(k_fold_size/3)
+            stop = start + k_fold_size
+            mid = int(0.8 * (stop - start)) + start
+            yield indices[start: mid], indices[mid + margin: stop]

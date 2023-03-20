@@ -2,10 +2,11 @@
 Optuna implementation that optimizes an LSTM neural network lag series 
 stock data using Keras.
 
-We optimize LSTM units, LSTM layer dropout, dense layer classes, and learning rate.
+We optimize LSTM units, LSTM layer dropout, dense layer classes, learning rate,
+batch size, and epochs.
 
 IN PROGRESS
-Last Revised: 15 Mar 2023
+Last Revised: 19 Mar 2023
 """
 
 import sys
@@ -13,10 +14,13 @@ import os
 
 import optuna
 
+from tensorflow import keras
 from keras.backend import clear_session
 from sklearn.preprocessing import MinMaxScaler
-from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.model_selection import train_test_split, TimeSeriesSplit
 from sklearn.linear_model import LinearRegression
+from sklearn.model_selection import cross_val_score
+
 from keras.preprocessing.sequence import TimeseriesGenerator
 from keras.models import Sequential
 from keras.layers import Dense, LSTM
@@ -42,15 +46,18 @@ TRAIN_RATIO = 0.70
 
 STUDY = 'OptDebug'
 N_TRIALS = 10
+BACKTEST = True
+S_TYPE = TimeSeriesSplit
 
 
-def create_model(trial, split):
-    X_train, y_train = split[0], split[1]
-    X_test, y_test = split[2], split[3]
+def create_model(trial, in_shape):
+    units = trial.suggest_int('units', 64, 128, step=2)
+    dropout = trial.suggest_float('dropout', 0, 1)
+    classes = trial.suggest_int('classes', 13, 30, step=1)
+    learning_rate = trial.suggest_float("learning_rate", 1e-5, 1e-1, log=True)
+    # recurrent_dropout = trial.suggest_float('recurrent_droupout', 0, 1)
 
     model = Sequential()
-
-    units = trial.suggest_int('units', 64, 128, step=2)
     model.add(
         LSTM(
             units=units,
@@ -58,10 +65,10 @@ def create_model(trial, split):
             recurrent_activation='sigmoid',
             unroll=False,
             use_bias=True,
-            dropout=trial.suggest_float('dropout', 0, 1),
-            # recurrent_dropout=trial.suggest_float('recurrent_droupout', 0, 1),
+            dropout=dropout,
+            # recurrent_dropout=recurrent_dropout,
             return_sequences=True,
-            input_shape=(X_train.shape[1], 1)
+            input_shape=(in_shape, 1)
         )
     )
     model.add(
@@ -71,39 +78,36 @@ def create_model(trial, split):
             recurrent_activation='sigmoid',
             unroll=False,
             use_bias=True,
-            dropout=trial.suggest_float('droupout', 0, 1),
-            # recurrent_dropout=trial.suggest_float('recurrent_droupout', 0, 1),
+            dropout=dropout ,
+            # recurrent_dropout=recurrent_dropout,
             return_sequences=False,
         )
     )
-    classes = trial.suggest_int('classes', 13, 30, step=1)
     model.add(
         Dense(
             classes,
             activation=None,
-            # use_bias=True
+            use_bias=True
         )
     )
     model.add(
         Dense(
             1,
-            # activation='relu',
-            # use_bias=True
+            activation=None, # try 'relu'
+            use_bias=True
         )
     )
 
-    # We compile our model with a sampled learning rate.
-    learning_rate = trial.suggest_float("learning_rate", 1e-5, 1e-1, log=True)
     # Only use 'accuracy' metric for classification.
     model.compile(
-        loss="mean_squared_error",
+        loss='mean_squared_error',
         optimizer=Adam(
             learning_rate=learning_rate,
             beta_1=0.9,
             beta_2=0.999,
             epsilon=1e-07
         ),
-        metrics=['mean_squared_error']#['mean_absolute_percentage_error']
+        metrics=['mean_squared_error'] # ['mean_absolute_percentage_error']
     )
 
     if trial.should_prune():
@@ -113,41 +117,80 @@ def create_model(trial, split):
 
 
 def objective(trial):
+    keras.backend.clear_session()
+
     # Importing and prepping data:
     data = datImport(TICKER, start = START, end=END, verbose=False)
-    split = data_split(data, LAG, DAYS, TRAIN_RATIO)
-    X_train, y_train = split[0], split[1]
-    X_test, y_test = split[2], split[3]
-    scaler = split[4]
 
     batchsize = trial.suggest_int('batchsize', 1, 128, step=1)
     epochs = trial.suggest_int('epochs', 1, 10, step=1)
-    model = create_model(trial, split)
-    model.fit(
-        X_train,
-        y_train,
-        validation_data=(X_test, y_test),
-        shuffle=True,
-        batch_size=batchsize,
-        epochs=epochs,
-        verbose=True,
-    )
 
-    # Evaluate the model accuracy on the validation set.
-    y_preds = model.predict(X_test)
-    y_preds = scaler.inverse_transform(y_preds)
+    if BACKTEST:
+        # Using backtest validation (sliding or expanding window)
+        # as the target optimization metric for Optuna.
+        split = data_split(data, LAG, DAYS, TRAIN_RATIO, backtest=True)
+        X, y = split[0], split[1]
 
-    # # RMSE.
-    # rmse = np.sqrt(np.mean(predictions - y_test)**2)
+        # n_splits = trial.suggest_int('n_splits', 5, 10, step=1)
+        # s_type = trial.suggest_categproca;('s_type', ['TimeSeriesSplit', 
+        #                                               'SlidingSeriesSplit'])
 
-    rmse = mean_squared_error(y_test, y_preds, squared=False)
-    
-    return rmse
+        model = BaseWrapper(
+            model=create_model(trial, split),
+            shuffle=True,
+            epochs=epochs,
+            batch_size=batchsize,
+            verbose=True
+            )
+        series_split = S_TYPE(n_splits=5)
+
+        cv_scores = -1 * cross_val_score(
+            model,
+            X, y,
+            cv=series_split,
+            scoring='neg_mean_squared_error',
+            n_jobs=1
+            )
+        
+        return cv_scores.mean()
+
+    else:
+        # Using standard RMSE as target optimization metric.
+        split = data_split(data, LAG, DAYS, TRAIN_RATIO)
+        X_train, y_train = split[0], split[1]
+        X_test, y_test = split[2], split[3]
+        scaler = split[4]
+
+        in_shape = split[0].shape[1]
+        
+        model = create_model(trial, in_shape)
+        model.fit(
+            X_train,
+            y_train,
+            validation_data=(X_test, y_test),
+            shuffle=True,
+            batch_size=batchsize,
+            epochs=epochs,
+            verbose=True,
+        )
+
+        # Evaluate model accuracy on the validation set w/ RMSE.
+        y_preds = model.predict(X_test)
+        y_preds = scaler.inverse_transform(y_preds)
+        rmse = mean_squared_error(y_test, y_preds, squared=False)
+        
+        return rmse
 
 
 if __name__ == "__main__":
-    study_name = STUDY #str(sys.argv[1])
-    n_trials = N_TRIALS # int(sys.argv[1])
+    study_name = STUDY
+    n_trials = N_TRIALS
+
+    if len(sys.argv) > 1:
+        n_trials = int(sys.argv[1])
+
+    if len(sys.argv) > 2:
+        study_name = str(sys.argv[2])
 
     # Suppress TensorFlow debug output.
     os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
@@ -158,17 +201,22 @@ if __name__ == "__main__":
         "'use_bias=True', and 'recurrent_dropout=0.0'."
     )
 
+    print("---------------------- \n"
+          "Beginning %i trials under '%s'. \n" 
+          "----------------------" 
+          %(n_trials, study_name))
+
     study = optuna.create_study(direction="minimize", study_name=study_name)
     # Use n_jobs=-1 for full parallelization.
-    study.optimize(objective, n_trials=n_trials, n_jobs=2, timeout=600)
+    study.optimize(objective, n_trials=n_trials, n_jobs=1, timeout=600)
 
-    print("Number of finished trials: {}".format(len(study.trials)))
+    print("Number of finished trials: %i" %len(study.trials))
 
     print("Best trial:")
     trial = study.best_trial
 
-    print("  Value: {}".format(trial.value))
+    print("    RMSE Value: %.3e" %trial.value)
 
-    print("  Params: ")
+    print("    Params: ")
     for key, value in trial.params.items():
-        print("    {}: {}".format(key, value))
+        print("    %s: %.3e" %(key, value))
