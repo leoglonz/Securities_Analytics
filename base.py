@@ -9,9 +9,10 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
+from matplotlib.patches import Patch
 
 from sklearn.preprocessing import MinMaxScaler
-from scikeras.wrappers import BaseWrapper, KerasRegressor
+from sklearn.model_selection import TimeSeriesSplit
 
 from pandas_datareader import data as pdr
 import yfinance as yfin
@@ -27,6 +28,15 @@ def custom_formatwarning(msg, *args, **kwargs):
     return str("UserWarning: ") + str(msg) + '\n'
 
 warnings.formatwarning = custom_formatwarning
+
+
+def roll(df, window=252):
+    """
+    Takes 'w'-sized slices from dataframe, incrementing 1 entry at a time.
+    """
+    for i in range(df.shape[0] - window + 1):
+        yield pd.DataFrame(df.values[i:i+window, :], df.index[i:i+window],
+                           df.columns)
 
 
 def datImport(ticker, start=dt.datetime(2023,1,1), end=dt.datetime.today(), 
@@ -196,6 +206,47 @@ def data_split(data, lag=60, days=1, train_ratio=0.70,
         exit()
 
 
+def backtest_split(data, lag=60, days=1, train_ratio=0.70,
+                   n_splits=5, method=TimeSeriesSplit, verbose=False):
+    """
+    Splitting data for backtesting using either rolling or
+    expanding window.
+    data: DataFrame, all stock data.
+    lag: int, number of days used for prediction.
+    days: int, number of days to predict.
+    train_ratio: float, percentage of data for training.
+    validation: bool, split data into train/valid/test when True.
+    backtest: bool, only performs x-y split when True.
+    Returns
+        X_train: array, independent training features.
+        y_train: array, objective training feature.
+        X_test: array, independent test features.
+        y_test: array, objective test feature.
+        X_valid: array, independent validation features.
+        y_valid: array, objective validation feature.
+        X: array, independent features.
+        y: array, target feature.
+    """
+    series_split = method(n_splits=n_splits)
+
+    # Separating input and target features in data.
+    X, y, scaler = data_split(data, lag=lag, days=days, 
+                              train_ratio=train_ratio, backtest=True)
+
+    X = np.asarray(X) # series_split requires np arrays.
+    y = np.asarray(y)
+
+    if verbose:
+        for fold, (train_index, test_index) in enumerate(series_split.split(X, y)):
+            print("Fold: {}".format(fold))
+            print("TRAIN indices:", train_index, "\n", "TEST indices:", test_index)
+            print("\n")
+            X_train, X_test = X[train_index], X[test_index]
+            y_train, y_test = y[train_index], y[test_index]
+    
+    return X, y, series_split, scaler
+
+
 def plot_cv_indices(cv, X, y, ax, n_splits, linewidth=10):
     """
     Plotting folds for walk forward-validation.
@@ -220,21 +271,15 @@ def plot_cv_indices(cv, X, y, ax, n_splits, linewidth=10):
     ax.set(
         yticks=np.arange(1,n_splits+1),
         xlabel="Historical Days Included",
-        ylabel="CV Pass",
+        ylabel="CV Iteration",
         ylim=[n_splits+1.2, -.1]
         )
-    ax.set_title("Walk-forward Splits for %i Passes" %n_splits, fontsize=15)
-
+    ax.set_title("Walk-forward Splits for %i CV Iterations"
+                 %n_splits, fontsize=15)
+    ax.legend([Patch(color='tomato'), Patch(color='royalblue')],
+          ['Train', 'Test'])
+    
     return ax
-
-
-def roll(df, window=252):
-    """
-    Takes 'w'-sized slices from dataframe, incrementing 1 entry at a time.
-    """
-    for i in range(df.shape[0] - window + 1):
-        yield pd.DataFrame(df.values[i:i+window, :], df.index[i:i+window],
-                           df.columns)
 
 
 ###########################
@@ -242,6 +287,13 @@ def roll(df, window=252):
 ###########################
 
 class SlidingSeriesSplit():
+    """
+    parameters
+    ----------
+    n_test_folds: int
+        number of folds to be used as testing at each iteration.
+        by default, 1.
+    """
     def __init__(self, n_splits):
         self.n_splits = n_splits
     
@@ -249,9 +301,31 @@ class SlidingSeriesSplit():
         return self.n_splits
     
     def split(self, X, y=None, groups=None):
+        """Generate indices to split data into training and test set.
+        Parameters
+        ----------
+        X : array-like of shape (n_samples, n_features)
+            Training data, where n_samples is the number of samples
+            and n_features is the number of features.
+        y : array-like of shape (n_samples,)
+            Always ignored, exists for compatibility.
+        groups : array-like of shape (n_samples,)
+            Always ignored, exists for compatibility.
+        Yields
+        ------
+        train : ndarray
+            The training set indices for that split.
+        test : ndarray
+            The testing set indices for that split.
+        """
         n_samples = len(X)
         k_fold_size = n_samples // self.n_splits
         indices = np.arange(n_samples)
+
+        if self.n_splits > n_samples:
+            raise ValueError(
+                "Cannot have number of folds =%i greater"
+                " than the number of samples: %i." %(self.n_splits, n_samples))
 
         margin = 0
         for i in range(self.n_splits):

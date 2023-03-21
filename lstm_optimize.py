@@ -17,7 +17,7 @@ import optuna
 from tensorflow import keras
 from keras.backend import clear_session
 from sklearn.preprocessing import MinMaxScaler
-from sklearn.model_selection import train_test_split, TimeSeriesSplit
+from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LinearRegression
 from sklearn.model_selection import cross_val_score
 
@@ -27,9 +27,14 @@ from keras.layers import Dense, LSTM
 from tensorflow.keras.optimizers import Adam
 from sklearn.metrics import mean_squared_error
 
-
 from base import *
+from analysis import *
 import datetime as dt
+
+try:
+    import cPickle as pickle
+except ModuleNotFoundError:
+    import pickle
 
 
 TICKER = 'AMZN'
@@ -45,7 +50,7 @@ TRAIN_RATIO = 0.70
 # EPOCHS = 1 #10
 
 STUDY = 'OptDebug'
-N_TRIALS = 10
+N_TRIALS = 2
 BACKTEST = True
 S_TYPE = TimeSeriesSplit
 
@@ -135,25 +140,19 @@ def objective(trial):
         # s_type = trial.suggest_categproca;('s_type', ['TimeSeriesSplit', 
         #                                               'SlidingSeriesSplit'])
 
-        model = BaseWrapper(
-            model=create_model(trial, split),
-            shuffle=True,
-            epochs=epochs,
+        agg_rmse = backtest_validation(
+            data,
+            make_model=create_model,
+            trial=trial,
+            n_splits=5,
             batch_size=batchsize,
+            epochs=epochs,
+            method=TimeSeriesSplit,
             verbose=True
-            )
-        series_split = S_TYPE(n_splits=5)
+        )
 
-        cv_scores = -1 * cross_val_score(
-            model,
-            X, y,
-            cv=series_split,
-            scoring='neg_mean_squared_error',
-            n_jobs=1
-            )
+        return agg_rmse.mean()
         
-        return cv_scores.mean()
-
     else:
         # Using standard RMSE as target optimization metric.
         split = data_split(data, LAG, DAYS, TRAIN_RATIO)
@@ -162,7 +161,7 @@ def objective(trial):
         scaler = split[4]
 
         in_shape = split[0].shape[1]
-        
+
         model = create_model(trial, in_shape)
         model.fit(
             X_train,
@@ -179,6 +178,9 @@ def objective(trial):
         y_preds = scaler.inverse_transform(y_preds)
         rmse = mean_squared_error(y_test, y_preds, squared=False)
         
+        with open("{}.pickle".format(trial.number), "wb") as fout:
+            pickle.dump(model, fout)
+
         return rmse
 
 
@@ -220,3 +222,9 @@ if __name__ == "__main__":
     print("    Params: ")
     for key, value in trial.params.items():
         print("    %s: %.3e" %(key, value))
+
+
+    # Saving Study:
+    
+
+    # with open()
