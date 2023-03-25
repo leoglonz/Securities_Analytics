@@ -53,18 +53,21 @@ BATCHSIZE = 1 #128
 EPOCHS = 1 #10
 
 STUDY = 'OptDebug'
-N_TRIALS = 1
+N_TRIALS = 5
 BACKTEST = False
-S_TYPE = TimeSeriesSplit
+N_SPLITS = 5
+S_TYPE = SlidingSeriesSplit # TimeSeriesSplit
 
 
 def create_model(trial, in_shape):
-    units = UNITS # trial.suggest_int('units', 64, 128, step=2)
+    units = trial.suggest_int('units', 64, 150, step=2)
     dropout = trial.suggest_float('dropout', 0, 1)
-    classes = CLASSES # trial.suggest_int('classes', 13, 30, step=1)
+    classes = trial.suggest_int('classes', 13, 50, step=1)
     learning_rate = trial.suggest_float('learning_rate', 1e-5, 1e-1, log=True)
-    activation = trial.suggest_categorical('dense_activation', [None, 'tanh', 'sigmoid'])
+    # activation = trial.suggest_categorical('dense_activation', [None, 'tanh', 'sigmoid'])
     # recurrent_dropout = trial.suggest_float('recurrent_droupout', 0, 1)
+
+    print(['UNITS etc.:', units, dropout, classes, learning_rate])
 
     model = Sequential()
     model.add(
@@ -102,7 +105,7 @@ def create_model(trial, in_shape):
     model.add(
         Dense(
             1,
-            activation=activation, # try 'relu'
+            activation= None, #activation,
             use_bias=True
         )
     )
@@ -131,6 +134,8 @@ def objective(trial):
     batchsize = trial.suggest_int('batchsize', 1, 128, step=1)
     epochs = trial.suggest_int('epochs', 1, 10, step=1)
 
+    print(['batchsize etc.:', batchsize, epochs])
+
     if BACKTEST:
         # Using backtest validation (sliding or expanding window)
         # as the target optimization metric for Optuna.
@@ -145,7 +150,7 @@ def objective(trial):
             data,
             make_model=create_model,
             trial=trial,
-            n_splits=10,
+            n_splits=N_SPLITS,
             batch_size=batchsize,
             epochs=epochs,
             method=TimeSeriesSplit,
@@ -193,11 +198,13 @@ if __name__ == "__main__":
     study_name = STUDY
     n_trials = N_TRIALS
 
-    if len(sys.argv) > 1:
-        study_name = str(sys.argv[1])
+    if len(sys.argv) == 2:
+        n_trials = int(sys.argv[1])
 
-    if len(sys.argv) > 2:
+    if len(sys.argv) == 3:
+        study_name = str(sys.argv[1])
         n_trials = int(sys.argv[2])
+
 
     # Suppress TensorFlow debug output.
     os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
@@ -225,7 +232,7 @@ if __name__ == "__main__":
         study_name=study_name
         )
     # Use n_jobs=-1 for full parallelization.
-    study.optimize(objective, n_trials=n_trials, n_jobs=-1, timeout=None)
+    study.optimize(objective, n_trials=n_trials, n_jobs=8, timeout=None)
 
     print("Number of finished trials: %i" %len(study.trials))
     print("Best trial:")
