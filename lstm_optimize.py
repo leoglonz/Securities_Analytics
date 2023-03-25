@@ -39,7 +39,7 @@ absl.logging.set_verbosity(absl.logging.ERROR)
 
 
 
-TICKER = 'GOOG'
+TICKER = 'AAPL'
 START = dt.datetime(2012, 1, 1)
 END = dt.datetime(2023, 1, 1)
 
@@ -53,8 +53,10 @@ BATCHSIZE = 1 #128
 EPOCHS = 1 #10
 
 STUDY = 'OptDebug'
+N_JOBS = 1
+
 N_TRIALS = 5
-BACKTEST = False
+BACKTEST = True
 N_SPLITS = 5
 S_TYPE = SlidingSeriesSplit # TimeSeriesSplit
 
@@ -232,7 +234,7 @@ if __name__ == "__main__":
         study_name=study_name
         )
     # Use n_jobs=-1 for full parallelization.
-    study.optimize(objective, n_trials=n_trials, n_jobs=8, timeout=None)
+    study.optimize(objective, n_trials=n_trials, n_jobs=N_JOBS, timeout=None)
 
     print("Number of finished trials: %i" %len(study.trials))
     print("Best trial:")
