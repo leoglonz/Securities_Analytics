@@ -1,6 +1,11 @@
 # This shell is designed to run Optuna optimization procedures in
 # parallel in the background.
 #
+# Each optimization is executed in the format:
+#       Python lstm_optimize.py "Study_Name" Number_of_trials.
+# When optimization is finished for a study, it will be saved in `~/opt_cache/`
+# under "Study_Name". 
+#
 # Notes:
 #   Include `wait` in between commands to do them in batches.
 #   Run this in terminal via 'bash run_parallel.sh'.

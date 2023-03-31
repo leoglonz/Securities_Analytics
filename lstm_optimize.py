@@ -6,18 +6,14 @@ We optimize LSTM units, LSTM layer dropout, dense layer classes, learning rate,
 batch size, and epochs.
 
 IN PROGRESS
-Last Revised: 21 Mar 2023
+Last Revised: 30 Mar 2023
 """
 import sys
 import os
 
 import optuna
-from optuna.samplers import TPESampler, QMCSampler
 
-from tensorflow import keras
 from sklearn.preprocessing import MinMaxScaler
-from sklearn.model_selection import train_test_split
-from sklearn.model_selection import cross_val_score
 
 from keras.backend import clear_session
 from keras.models import Sequential
