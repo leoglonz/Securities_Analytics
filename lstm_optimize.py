@@ -41,7 +41,7 @@ absl.logging.set_verbosity(absl.logging.ERROR)
 
 TICKER = 'AAPL'
 START = dt.datetime(2012, 1, 1)
-END = dt.datetime(2023, 1, 1)
+END = dt.datetime(2022, 12, 1)
 
 LAG = 60
 DAYS = 1
@@ -53,10 +53,10 @@ BATCHSIZE = 1 #128
 EPOCHS = 1 #10
 
 STUDY = 'OptDebug'
-N_JOBS = 1
+N_JOBS = 2
 
-N_TRIALS = 5
-BACKTEST = True
+N_TRIALS = 20
+BACKTEST = False
 N_SPLITS = 5
 S_TYPE = SlidingSeriesSplit # TimeSeriesSplit
 
@@ -184,16 +184,24 @@ def objective(trial):
         # Evaluate model accuracy on the validation set w/ RMSE.
         y_preds = model.predict(X_test)
         y_preds = scaler.inverse_transform(y_preds)
-        rmse = mean_squared_error(y_test, y_preds, squared=False)
         
-        # Save the current model iteration.
-        path = '/Users/leoglonz/Desktop/stock_analysis/opt_cache/'
-    
-        with open(path + "{}_{}.pickle".format(study.study_name,
-                                             trial.number), "wb") as fout:
-            pickle.dump(model, fout)
+        # Choosing the loss metric we want to minimize.
+        # if LOSS_METRIC == 'mean_absolute_percentage_error':
+        #     loss = np.sum(np.abs((y_test-y_preds) / y_test)) / len(y_test)
 
-        return rmse
+        # if LOSS_METRIC == 'mean_squared_error':
+        #     loss = np.sqrt(np.sum((y_test-y_preds)**2) / len(y_test))
+
+        loss = mean_squared_error(y_test, y_preds, squared=False)
+        
+        # # Save the current model iteration.
+        # path = '/Users/leoglonz/Desktop/stock_analysis/opt_cache/'
+    
+        # with open(path + "{}_{}.pickle".format(study.study_name,
+        #                                      trial.number), "wb") as fout:
+        #     pickle.dump(model, fout)
+
+        return loss
 
 
 if __name__ == "__main__":
