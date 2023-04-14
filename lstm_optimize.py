@@ -142,7 +142,7 @@ def objective(trial):
 
         # n_splits = trial.suggest_int('n_splits', 5, 10, step=1)
         # s_type = trial.suggest_categproca;('s_type', ['TimeSeriesSplit', 
-        #                                               'SlidingSeriesSplit'])
+        #                                            'SlidingSeriesSplit'])
 
         agg_rmse = backtest_validation(
             data,

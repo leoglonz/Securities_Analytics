@@ -2,7 +2,7 @@
 Will hold generalized stock analysis functions akin to those 'Stock_Analysis.ipynb'.
 
 IN PROGRESS
-Last Revised: 30 Mar 2023
+Last Revised: 14 Apr. 2023
 """
 
 import numpy as np
@@ -124,12 +124,81 @@ def backtest_validation(data, make_model, trial=None, lag=60, days=1,
     return agg_rmse
 
 
-def create_model(trial, in_shape):
+def create_test_model(trial, in_shape):
     '''
     A modification on a vanilla model function, where in
     this case we pass a trial object that Optuna uses both in
     its optimization routine, and for passing values for the
     hyperparameters in the case of model fitting.
+    in_shape: int, gives the col shape (# of features) that the
+        first LSTM node should expect to receive.
+    '''
+    units = trial.suggest_int('units', 64, 150, step=2)
+    dropout = trial.suggest_float('dropout', 0, 1)
+    classes = trial.suggest_int('classes', 13, 50, step=1)
+    learning_rate = trial.suggest_float('learning_rate', 1e-5, 1e-1, log=True)
+    # activation = trial.suggest_categorical('dense_activation', [None, 'tanh', 'sigmoid'])
+    # recurrent_dropout = trial.suggest_float('recurrent_droupout', 0, 1)
+
+    model = Sequential()
+    model.add(
+        LSTM(
+            units=units,
+            activation='tanh',
+            recurrent_activation='sigmoid',
+            unroll=False,
+            use_bias=True,
+            dropout=dropout,
+            # recurrent_dropout=recurrent_dropout,
+            return_sequences=True,
+            input_shape=(in_shape, 1)
+        )
+    )
+    model.add(
+        LSTM(
+            units=int(units/2),
+            activation='tanh',
+            recurrent_activation='sigmoid',
+            unroll=False,
+            use_bias=True,
+            dropout=dropout,
+            # recurrent_dropout=recurrent_dropout,
+            return_sequences=False,
+        )
+    )
+    model.add(
+        Dense(
+            classes,
+            activation=None,
+            use_bias=True
+        )
+    )
+    model.add(
+        Dense(
+            1,
+            activation= None, # activation,
+            use_bias=True
+        )
+    )
+
+    # Only use 'accuracy' metric for classification.
+    model.compile(
+        loss='mean_squared_error',
+        optimizer=Adam(
+            learning_rate=learning_rate,
+            beta_1=0.9,
+            beta_2=0.999,
+            epsilon=1e-07
+        ),
+        metrics=['mean_squared_error'] # ['mean_absolute_percentage_error']
+    )
+    
+    return model
+
+
+def create_model(in_shape):
+    '''
+    Vanilla model structure for general analysis.
     in_shape: int, gives the col shape (# of features) that the
         first LSTM node should expect to receive.
     '''
