@@ -37,7 +37,7 @@ absl.logging.set_verbosity(absl.logging.ERROR)
 
 TICKER = 'AAPL'
 START = dt.datetime(2012, 1, 1)
-END = dt.datetime(2022, 12, 1)
+END = dt.datetime(2023, 1, 1)
 
 LAG = 60
 DAYS = 1
