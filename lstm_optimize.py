@@ -35,7 +35,7 @@ absl.logging.set_verbosity(absl.logging.ERROR)
 
 
 
-TICKER = 'AAPL'
+TICKER = 'LMT'
 START = dt.datetime(2012, 1, 1)
 END = dt.datetime(2023, 1, 1)
 

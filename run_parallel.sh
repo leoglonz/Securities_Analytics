@@ -17,13 +17,13 @@ cd ~/Desktop/stock_analysis/
 pwd
 date
 
-python lstm_optimize.py "OptStudy_v4" 20 & #1 
-python lstm_optimize.py "OptStudy_v5" 20 & #"2
-python lstm_optimize.py "OptStudy_v3" 20 & #3
-python lstm_optimize.py "OptStudy_v4" 20 & #4
-wait
-python lstm_optimize.py "OptStudy_v5" 20 & #5
-python lstm_optimize.py "OptStudy_v6" 20 & #6
-python lstm_optimize.py "OptStudy_v7" 20 & #7
-python lstm_optimize.py "OptStudy_v8" 20 & #8
+python lstm_optimize.py "OptStudy_LMT" 50 & #1 
+# python lstm_optimize.py "OptStudy_v5" 20 & #"2
+# python lstm_optimize.py "OptStudy_v3" 20 & #3
+# python lstm_optimize.py "OptStudy_v4" 20 & #4
+# wait
+# python lstm_optimize.py "OptStudy_v5" 20 & #5
+# python lstm_optimize.py "OptStudy_v6" 20 & #6
+# python lstm_optimize.py "OptStudy_v7" 20 & #7
+# python lstm_optimize.py "OptStudy_v8" 20 & #8
 wait
