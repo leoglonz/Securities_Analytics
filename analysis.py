@@ -2,7 +2,7 @@
 Will hold generalized stock analysis functions akin to those 'Stock_Analysis.ipynb'.
 
 IN PROGRESS
-Last Revised: 14 Apr. 2023
+Last Revised: 03 Oct 2023
 """
 
 import numpy as np

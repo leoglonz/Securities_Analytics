@@ -7,7 +7,7 @@ directory. If a model is not already present, run `lstm_optimize.py` first
 
 
 IN PROGRESS
-Last Revised: 14 Apr. 2023
+Last Revised: 14 Sep 2023
 """
 
 from base import *

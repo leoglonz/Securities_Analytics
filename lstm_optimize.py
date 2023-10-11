@@ -6,7 +6,7 @@ We optimize LSTM units, LSTM layer dropout, dense layer classes, learning rate,
 batch size, and epochs.
 
 IN PROGRESS
-Last Revised: 30 Mar 2023
+Last Revised: 04 Oct 2023
 """
 import sys
 import os
